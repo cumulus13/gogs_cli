@@ -39,6 +39,7 @@ class CLI:
         repo_parser = subparsers.add_parser('repo', help='Repository operations')
         repo_parser.add_argument('-a', '--add', metavar='REPO_NAME', help='Create new repository')
         repo_parser.add_argument('-l', '--list', action='store_true', help='List repositories')
+        repo_parser.add_argument('-rm', '--remove', metavar='REPO_NAME', help='Remove repository')  # Tambahkan ini
 
     @classmethod
     def usage(cls):
@@ -64,6 +65,8 @@ class CLI:
                 cls.create_repo(args)
             elif args.list:
                 cls.list_repos(args)
+            elif args.remove:
+                cls.remove_repo(args)
             else:
                 console.print("[red]No repo action specified.[/]")
                 sys.exit(1)
@@ -72,13 +75,40 @@ class CLI:
             sys.exit(1)
 
     @classmethod
-    def create_repo(cls, args):
-        url = f"{args.url}/user/repos"
+    def get_auth_headers(cls, args):
         api_key = args.api or cls.CONFIG.get_config('api', 'key', "c895e3636e813df4dbe9d01aed4bff0e14fc99b5")
         headers = {'Authorization': f'token {api_key}'} if api_key else {}
         auth = None
         if not api_key:
-            auth = (args.username or cls.CONFIG.get_config('auth', 'username'), args.password or cls.CONFIG.get_config('auth', 'password'))
+            auth = (
+                args.username or cls.CONFIG.get_config('auth', 'username'),
+                args.password or cls.CONFIG.get_config('auth', 'password')
+            )
+        return auth, headers
+
+    @classmethod
+    def get_current_user(cls, args):
+        """
+        Take user username related to API_Key/Token.
+        """
+        url = f"{args.url}/user"
+        _, headers = cls.get_auth_headers(args)
+        try:
+            r = requests.get(url, headers=headers)
+            if r.status_code == 200:
+                user = r.json()
+                return user.get("login") or user.get("username")
+            else:
+                console.print(f"[red]Failed to get current user: {r.status_code} {r.text}[/]")
+                return None
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/]")
+            return None
+        
+    @classmethod
+    def create_repo(cls, args):
+        url = f"{args.url}/user/repos"
+        auth, headers = cls.get_auth_headers(args)
         data = {"name": args.add}
         try:
             r = requests.post(url, auth=auth, headers=headers, json=data)
@@ -92,11 +122,7 @@ class CLI:
     @classmethod
     def list_repos(cls, args):
         url = f"{args.url}/user/repos"
-        api_key = args.api or cls.CONFIG.get_config('api', 'key', 'c895e3636e813df4dbe9d01aed4bff0e14fc99b5')
-        headers = {'Authorization': f'token {api_key}'} if api_key else {}
-        auth = None
-        if not api_key:
-            auth = (args.username or cls.CONFIG.get_config('auth', 'username'), args.password or cls.CONFIG.get_config('auth', 'password'))
+        auth, headers = cls.get_auth_headers(args)
         try:
             r = requests.get(url, auth=auth, headers=headers)
             if r.status_code == 200:
@@ -109,6 +135,72 @@ class CLI:
                     console.print("[yellow]No repositories found.[/]")
             else:
                 console.print(f"[red]Failed to list repos: {r.status_code} {r.text}[/]")
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/]")
+
+    @classmethod
+    def remove_repo(cls, args):
+        # Take a username from Token/API_Key
+        owner = cls.get_current_user(args)
+        if not owner:
+            console.print("[red]Cannot determine owner from api_key.[/]")
+            return
+        url = f"{args.url}/repos/{owner}/{args.remove}"
+        _, headers = cls.get_auth_headers(args)
+        try:
+            r = requests.delete(url, headers=headers)
+            if r.status_code == 204:
+                console.print(f"[green]Repository '{args.remove}' deleted successfully.[/]")
+            elif r.status_code == 404:
+                console.print(f"[yellow]Repository '{args.remove}' not found.[/]")
+            else:
+                console.print(f"[red]Failed to delete repo: {r.status_code} {r.text}[/]")
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/]")
+            
+    @classmethod
+    def remove_repo2(cls, args):
+        # Cari owner repo dari list repo
+        auth, headers = cls.get_auth_headers(args)
+        list_url = f"{args.url}/user/repos"
+        try:
+            r = requests.get(list_url, auth=auth, headers=headers)
+            if r.status_code == 200:
+                repos = r.json()
+                owner = None
+                for repo in repos:
+                    if repo['name'] == args.remove:
+                        owner = repo['owner']['username']
+                        break
+                if not owner:
+                    console.print(f"[yellow]Repository '{args.remove}' not found in your account.[/]")
+                    return
+                url = f"{args.url}/repos/{owner}/{args.remove}"
+                print("DELETE URL:", url)
+                r = requests.delete(url, auth=auth, headers=headers)
+                if r.status_code == 204:
+                    console.print(f"[green]Repository '{args.remove}' deleted successfully.[/]")
+                elif r.status_code == 404:
+                    console.print(f"[yellow]Repository '{args.remove}' not found.[/]")
+                else:
+                    console.print(f"[red]Failed to delete repo: {r.status_code} {r.text}[/]")
+            else:
+                console.print(f"[red]Failed to list repos: {r.status_code} {r.text}[/]")
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/]")
+            
+    @classmethod
+    def remove_repo1(cls, args):
+        url = f"{args.url}/repos/{args.username}/{args.remove}"
+        auth, headers = cls.get_auth_headers(args)
+        try:
+            r = requests.delete(url, auth=auth, headers=headers)
+            if r.status_code == 204:
+                console.print(f"[green]Repository '{args.remove}' deleted successfully.[/]")
+            elif r.status_code == 404:
+                console.print(f"[yellow]Repository '{args.remove}' not found.[/]")
+            else:
+                console.print(f"[red]Failed to delete repo: {r.status_code} {r.text}[/]")
         except Exception as e:
             console.print(f"[red]Error: {e}[/]")
 
