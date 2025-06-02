@@ -39,7 +39,9 @@ class CLI:
         repo_parser = subparsers.add_parser('repo', help='Repository operations')
         repo_parser.add_argument('-a', '--add', metavar='REPO_NAME', help='Create new repository')
         repo_parser.add_argument('-l', '--list', action='store_true', help='List repositories')
-        repo_parser.add_argument('-rm', '--remove', metavar='REPO_NAME', help='Remove repository')  # Tambahkan ini
+        repo_parser.add_argument('-rm', '--remove', metavar='REPO_NAME', help='Remove repository')
+        repo_parser.add_argument('-m', '--migrate', nargs=2, metavar=('REPO_NAME', 'REMOTE_URL'),
+                                 help='Migrate/clone repository from another server (gogs/gitea/github/etc)')
 
     @classmethod
     def usage(cls):
@@ -67,6 +69,9 @@ class CLI:
                 cls.list_repos(args)
             elif args.remove:
                 cls.remove_repo(args)
+            elif args.migrate:
+                repo_name, remote_url = args.migrate
+                cls.migrate_repo(args, repo_name, remote_url)
             else:
                 console.print("[red]No repo action specified.[/]")
                 sys.exit(1)
@@ -74,6 +79,43 @@ class CLI:
             console.print("[red]Unknown command.[/]")
             sys.exit(1)
 
+    @classmethod
+    def migrate_repo(cls, args, repo_name, remote_url):
+        """
+        Migrate/clone repository from another server (gogs/gitea/github/etc) using Gitea API.
+        """
+        url = f"{args.url}/repos/migrate"
+        auth, headers = cls.get_auth_headers(args)
+        data = {
+            "clone_addr": remote_url,
+            "uid": None,  # will be filled below
+            "repo_name": repo_name,
+            "mirror": False,
+            "private": False
+        }
+        # Get current user id (uid)
+        user_url = f"{args.url}/user"
+        try:
+            r = requests.get(user_url, auth=auth, headers=headers)
+            if r.status_code == 200:
+                user = r.json()
+                data["uid"] = user.get("id")
+            else:
+                console.print(f"[red]Failed to get user info: {r.status_code} {r.text}[/]")
+                return
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/]")
+            return
+
+        try:
+            r = requests.post(url, auth=auth, headers=headers, json=data)
+            if r.status_code in (201, 200):
+                console.print(f"[green]Repository '{repo_name}' migrated successfully from {remote_url}.[/]")
+            else:
+                console.print(f"[red]Failed to migrate repo: {r.status_code} {r.text}[/]")
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/]")
+            
     @classmethod
     def get_auth_headers(cls, args):
         api_key = args.api or cls.CONFIG.get_config('api', 'key', "c895e3636e813df4dbe9d01aed4bff0e14fc99b5")
