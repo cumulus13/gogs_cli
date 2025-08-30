@@ -8,6 +8,11 @@ from rich_argparse import RichHelpFormatter, _lazy_rich as rr
 from typing import ClassVar
 import sys
 from configset import configset
+from pathlib import Path
+# import traceback
+import os
+import clipboard
+
 
 console = Console()
 
@@ -28,7 +33,7 @@ class CustomRichHelpFormatter(RichHelpFormatter):
 class CLI:
     """A command-line interface for interacting with Gogs API."""
 
-    CONFIGFILE = str(Path(__file__).parent / 'gogs_cli.ini')
+    CONFIGFILE = str(Path(__file__).parent / Path(__file__).stem) + ".ini"
     CONFIG = configset(CONFIGFILE)
 
     @classmethod
@@ -36,12 +41,12 @@ class CLI:
         subparsers = cls.parser.add_subparsers(dest='command', required=True)
 
         # REPO subparser
-        repo_parser = subparsers.add_parser('repo', help='Repository operations')
+        repo_parser = subparsers.add_parser('repo', help='Repository operations', formatter_class=CustomRichHelpFormatter)
         repo_parser.add_argument('-a', '--add', metavar='REPO_NAME', help='Create new repository')
         repo_parser.add_argument('-l', '--list', action='store_true', help='List repositories')
         repo_parser.add_argument('-rm', '--remove', metavar='REPO_NAME', help='Remove repository')
-        repo_parser.add_argument('-m', '--migrate', nargs=2, metavar=('REPO_NAME', 'REMOTE_URL'),
-                                 help='Migrate/clone repository from another server (gogs/gitea/github/etc)')
+        repo_parser.add_argument('-m', '--migrate', metavar='REPO_NAME', help='Migrate/clone repository from another server (gogs/gitea/github/etc)')
+        repo_parser.add_argument('-n', '--name', metavar='REPO_NAME', help='Saved repository name for migration')
 
     @classmethod
     def usage(cls):
@@ -70,13 +75,13 @@ class CLI:
             elif args.remove:
                 cls.remove_repo(args)
             elif args.migrate:
-                repo_name, remote_url = args.migrate
-                cls.migrate_repo(args, repo_name, remote_url)
+                repo_name = args.name or args.migrate.split('/')[-1]
+                cls.migrate_repo(args, repo_name, args.migrate)
             else:
-                console.print("[red]No repo action specified.[/]")
+                console.print("⚠️ [red]No repo action specified.[/]")
                 sys.exit(1)
         else:
-            console.print("[red]Unknown command.[/]")
+            console.print("❌ [red]Unknown command.[/]")
             sys.exit(1)
 
     @classmethod
@@ -84,6 +89,7 @@ class CLI:
         """
         Migrate/clone repository from another server (gogs/gitea/github/etc) using Gitea API.
         """
+        console.print(f"🚩 [#FFFF00]Migrating repository[/] [bold #00FFFF]'{repo_name}'[/] from [bold #00FFAA]{remote_url}[/]...")
         url = f"{args.url}/repos/migrate"
         auth, headers = cls.get_auth_headers(args)
         data = {
@@ -97,24 +103,28 @@ class CLI:
         user_url = f"{args.url}/user"
         try:
             r = requests.get(user_url, auth=auth, headers=headers)
+            console.print(f"🔍 [#00FFAA]Getting user info from[/] [#FFFF00]{user_url}[/] [#FFFF00]\[{r.status_code}][/]")
             if r.status_code == 200:
                 user = r.json()
                 data["uid"] = user.get("id")
             else:
-                console.print(f"[red]Failed to get user info: {r.status_code} {r.text}[/]")
+                console.print(f"\n❌ [red]Failed to get user info:[/] [white on blue]{r.status_code}[/] [#FFAA00{r.text}[/]")
                 return
         except Exception as e:
-            console.print(f"[red]Error: {e}[/]")
+            console.print(f"\n❌ [red]Error [1]:[/] [white on blue]{e}[/]")
+            if os.getenv('TRACEBACK') and os.getenv('TRACEBACK').lower() in ['1', 'true']: console.print_exception()
             return
 
         try:
             r = requests.post(url, auth=auth, headers=headers, json=data)
+            console.print(f"🔄 [#00FFAA]Migrating repository to[/] [#FFFF00]{url}[/] [#FFFF00]\[{r.status_code}][/]")
             if r.status_code in (201, 200):
-                console.print(f"[green]Repository '{repo_name}' migrated successfully from {remote_url}.[/]")
+                console.print(f"⚠️ [#00FFFF]Repository[/] [#FFFF00]'{repo_name}'[/] [#00FFFF]migrated successfully from[/] [#00FFAA]{remote_url}.[/]")
             else:
-                console.print(f"[red]Failed to migrate repo: {r.status_code} {r.text}[/]")
+                console.print(f"❌ [red]Failed to migrate repo:[/] [#FFFF00]{r.status_code}[/] [#00FFFF]{r.text}[/]")
         except Exception as e:
-            console.print(f"[red]Error: {e}[/]")
+            console.print(f"❌ [red]Error [2]:[/] [white on blue]{e}[/]")
+            if os.getenv('TRACEBACK') and os.getenv('TRACEBACK').lower() in ['1', 'true']: console.print_exception()
             
     @classmethod
     def get_auth_headers(cls, args):
@@ -141,10 +151,11 @@ class CLI:
                 user = r.json()
                 return user.get("login") or user.get("username")
             else:
-                console.print(f"[red]Failed to get current user: {r.status_code} {r.text}[/]")
+                console.print(f"❌ [red]Failed to get current user: {r.status_code} {r.text}[/]")
                 return None
         except Exception as e:
-            console.print(f"[red]Error: {e}[/]")
+            console.print(f"❌ [red]Error [3]:[/] [white on blue]{e}[/]")
+            if os.getenv('TRACEBACK') and os.getenv('TRACEBACK').lower() in ['1', 'true']: console.print_exception()
             return None
         
     @classmethod
@@ -155,50 +166,57 @@ class CLI:
         try:
             r = requests.post(url, auth=auth, headers=headers, json=data)
             if r.status_code == 201:
-                console.print(f"[green]Repository '{args.add}' created successfully.[/]")
+                console.print(f"✅ [green]Repository '{args.add}' created successfully.[/]")
             else:
-                console.print(f"[red]Failed to create repo: {r.status_code} {r.text}[/]")
+                console.print(f"❌ [red]Failed to create repo: {r.status_code} {r.text}[/]")
         except Exception as e:
-            console.print(f"[red]Error: {e}[/]")
+            console.print(f"❌ [red]Error [4]:[/] [white on blue]{e}[/]")
+            if os.getenv('TRACEBACK') and os.getenv('TRACEBACK').lower() in ['1', 'true']: console.print_exception()
 
     @classmethod
     def list_repos(cls, args):
         url = f"{args.url}/user/repos"
         auth, headers = cls.get_auth_headers(args)
+        r = None
         try:
             r = requests.get(url, auth=auth, headers=headers)
             if r.status_code == 200:
                 repos = r.json()
                 if repos:
-                    console.print("[bold green]Repositories:[/]")
+                    console.print("🔄 [bold green]Repositories:[/]")
                     for repo in repos:
                         console.print(f"- {repo['name']}")
                 else:
-                    console.print("[yellow]No repositories found.[/]")
+                    console.print("⚠️ [yellow]No repositories found.[/]")
             else:
-                console.print(f"[red]Failed to list repos: {r.status_code} {r.text}[/]")
+                console.print(f"❌ [red]Failed to list repos: {r.status_code} {r.text}[/]")
         except Exception as e:
-            console.print(f"[red]Error: {e}[/]")
+            console.print(f"❌ [red]Error [5]:[/] [white on blue]{e}[/]")
+            if os.getenv('TRACEBACK') and os.getenv('TRACEBACK').lower() in ['1', 'true']:
+                console.print_exception()
+                console.log(f"❌ [red]Error [5]:[/] [white on blue]{e}[/] : [black on green]{r.content if r else None}[/]")
+                clipboard.copy(r.content.decode()) if r else None
 
     @classmethod
     def remove_repo(cls, args):
         # Take a username from Token/API_Key
         owner = cls.get_current_user(args)
         if not owner:
-            console.print("[red]Cannot determine owner from api_key.[/]")
+            console.print("\n❌ [red]Cannot determine owner from api_key.[/]")
             return
         url = f"{args.url}/repos/{owner}/{args.remove}"
         _, headers = cls.get_auth_headers(args)
         try:
             r = requests.delete(url, headers=headers)
             if r.status_code == 204:
-                console.print(f"[green]Repository '{args.remove}' deleted successfully.[/]")
+                console.print(f"🚩 [green]Repository '{args.remove}' deleted successfully.[/]")
             elif r.status_code == 404:
-                console.print(f"[yellow]Repository '{args.remove}' not found.[/]")
+                console.print(f"⚠️ [yellow]Repository '{args.remove}' not found.[/]")
             else:
-                console.print(f"[red]Failed to delete repo: {r.status_code} {r.text}[/]")
+                console.print(f"❌ [red]Failed to delete repo: {r.status_code} {r.text}[/]")
         except Exception as e:
-            console.print(f"[red]Error: {e}[/]")
+            console.print(f"❌ [red]Error [6]:[/] [white on blue]{e}[/]")
+            if os.getenv('TRACEBACK') and os.getenv('TRACEBACK').lower() in ['1', 'true']: console.print_exception()
             
     @classmethod
     def remove_repo2(cls, args):
@@ -229,7 +247,8 @@ class CLI:
             else:
                 console.print(f"[red]Failed to list repos: {r.status_code} {r.text}[/]")
         except Exception as e:
-            console.print(f"[red]Error: {e}[/]")
+            console.print(f"❌ [red]Error [7]:[/] [white on blue]{e}[/]")
+            if os.getenv('TRACEBACK') and os.getenv('TRACEBACK').lower() in ['1', 'true']: console.print_exception()
             
     @classmethod
     def remove_repo1(cls, args):
@@ -244,7 +263,8 @@ class CLI:
             else:
                 console.print(f"[red]Failed to delete repo: {r.status_code} {r.text}[/]")
         except Exception as e:
-            console.print(f"[red]Error: {e}[/]")
+            console.print(f"❌ [red]Error [8]:[/] [white on blue]{e}[/]")
+            if os.getenv('TRACEBACK') and os.getenv('TRACEBACK').lower() in ['1', 'true']: console.print_exception()
 
 if __name__ == "__main__":
     CLI.usage()
