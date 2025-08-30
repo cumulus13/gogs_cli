@@ -266,7 +266,7 @@ class CLI:
             console.print(f"❌ [red]Error [8]:[/] [white on blue]{e}[/]")
             if os.getenv('TRACEBACK') and os.getenv('TRACEBACK').lower() in ['1', 'true']: console.print_exception()
 def main():
-    CLI.Usage()
+    CLI.usage()
 
 if __name__ == "__main__":
     main()
