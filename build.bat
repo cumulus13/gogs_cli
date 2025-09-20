@@ -4,4 +4,4 @@ rmdir /s /q  *.egg-info
 rmdir /s /q  __pycache__
 python setup.py sdist bdist_wheel
 twine upload dist\* -r pypihub
-@rem twine upload dist\* 
+twine upload dist\* 

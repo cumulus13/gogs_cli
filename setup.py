@@ -1,9 +1,9 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from setuptools import setup, find_packages
+from pathlib import Path
 import os
 import shutil
-from pathlib import Path
 import traceback
 
 NAME = "gogs_cli"
@@ -43,25 +43,48 @@ def get_version():
 
     return "0.0.0"
 
-print(f"NAME   : {NAME}")
-print(f"VERSION: {get_version()}")
+# Read the contents of README file
+this_directory = Path(__file__).parent
+long_description = (this_directory / "README.md").read_text(encoding='utf-8')
+
+# Read requirements
+requirements = []
+requirements_file = this_directory / "requirements.txt"
+if requirements_file.exists():
+    requirements = requirements_file.read_text().strip().split('\n')
+else:
+    # Fallback requirements
+    requirements = [
+        'aiohttp>=3.8.0',
+        'rich>=13.0.0',
+        'rich-argparse>=1.0.0',
+        'configset>=2.0.0',
+        'clipboard>=0.0.4'
+    ]
 
 setup(
-    name=NAME,
+    name="gogs-cli",
     version=get_version(),
     author="Hadi Cahyadi",
     author_email="cumulus13@gmail.com",
-    description="simple gogs cli",
+    description="A high-performance, async command-line interface for interacting with Gogs Git repositories",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url=f"https://github.com/cumulus13/{NAME}",
-    # packages=find_packages(),
-    packages=[NAME],
+    url="https://github.com/cumulus13/gogs_cli",
+    project_urls={
+        "Bug Tracker": "https://github.com/cumulus13/gogs_cli/issues",
+        "Documentation": "https://github.com/cumulus13/gogs_cli#readme",
+        "Source Code": "https://github.com/cumulus13/gogs_cli",
+    },
+    packages=find_packages(),
+    py_modules=['gogs_cli'],
     classifiers=[
-        "Development Status :: 4 - Beta",
+        "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
+        "Topic :: Software Development :: Version Control :: Git",
+        "Topic :: System :: Systems Administration",
+        "Topic :: Utilities",
         "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
@@ -69,27 +92,48 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
-        "Topic :: Software Development :: Libraries :: Python Modules",
-        "Topic :: System :: Logging",
-        "Topic :: Utilities",
+        "Operating System :: OS Independent",
+        "Environment :: Console",
     ],
     python_requires=">=3.7",
     install_requires=[
-        "rich>=10.0.0",
-        "rich_argparse",
-        "configset",
-        "clipboard"
+        'aiohttp>=3.8.0',
     ],
-    entry_points = {
-        "console_scripts":
-            [
-                "gogs = gogs_cli:main",
-            ]
+    extras_require={
+        'full': [
+            'rich>=13.0.0',
+            'rich-argparse>=1.0.0',
+            'configset>=2.0.0',
+            'clipboard>=0.0.4',
+        ],
+        'rich': [
+            'rich>=13.0.0',
+            'rich-argparse>=1.0.0',
+        ],
+        'config': [
+            'configset>=2.0.0',
+        ],
+        'clipboard': [
+            'clipboard>=0.0.4',
+        ],
     },
-    keywords="gogs tools",
-    project_urls={
-        "Bug Reports": f"https://github.com/cumulus13/{NAME}/issues",
-        "Source": f"https://github.com/cumulus13/{NAME}",
-        "Documentation": f"https://github.com/cumulus13/{NAME}#readme",
+    entry_points={
+        'console_scripts': [
+            'gogs-cli=gogs_cli:main',
+            "gogs=gogs_cli:main",
+        ],
     },
+    keywords=[
+        'gogs',
+        'gitea', 
+        'git',
+        'cli',
+        'async',
+        'repository',
+        'api',
+        'command-line',
+        'version-control'
+    ],
+    include_package_data=True,
+    zip_safe=False,
 )
