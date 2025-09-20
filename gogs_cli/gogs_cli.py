@@ -349,7 +349,7 @@ class CLI:
 
         self.config_file_list = [
             Path(os.path.expanduser('~')) / '.gogs-cli' / f"{Path(__file__).stem}.ini" if sys.platform == 'win32' else Path(os.path.expanduser('~')) / '.config' / f"{Path(__file__).stem}.ini",
-            Path(os.path.expandvard('%APPDATA%')) / '.gogs-cli' / f"{Path(__file__).stem}.ini" if sys.platform == 'win32' else Path(os.path.expanduser('~')) / '.config' / f"{Path(__file__).stem}.ini",
+            Path(os.path.expandvars('%APPDATA%')) / '.gogs-cli' / f"{Path(__file__).stem}.ini" if sys.platform == 'win32' else Path(os.path.expanduser('~')) / '.config' / f"{Path(__file__).stem}.ini",
             Path.cwd() / f"{Path(__file__).stem}.ini",
             Path(__file__).parent / f"{Path(__file__).stem}.ini"
         ]
